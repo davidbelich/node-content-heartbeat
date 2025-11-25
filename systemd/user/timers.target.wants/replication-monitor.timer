@@ -1,0 +1,13 @@
+[Unit]
+Description=Run replication‑monitor.service every 6 hours
+
+[Timer]
+# Run 5 minutes after you log in (or after boot)
+OnBootSec=5min
+# After the previous run finishes, wait 6 hours before starting again
+OnUnitActiveSec=6h
+# If the machine was off, run the missed execution as soon as it comes back up
+Persistent=true
+
+[Install]
+WantedBy=timers.target

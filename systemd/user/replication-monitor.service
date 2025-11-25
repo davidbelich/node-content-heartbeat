@@ -1,0 +1,14 @@
+[Unit]
+Description=Check DB replication errors and notify via ntfy
+Documentation=https://codeberg.org/davidbelich/node-content-heartbeat/
+
+[Service]
+# Run the script with the current user’s environment
+Type=oneshot
+# ExecStart=/usr/bin/node %h/replication-monitor/check-replication.js
+ExecStart=%h/replication-monitor/check-replication.js
+# Make sure the script can find node (adjust if you use nvm, etc.)
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Optional: capture stdout/stderr in the journal (default)
+StandardOutput=journal
+StandardError=journal
