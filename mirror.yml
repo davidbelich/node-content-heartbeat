@@ -1,0 +1,123 @@
+name: Mirror to GitHub & GitLab (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      gh-token:
+        description: "GitHub personal‑access‑token"
+        required: true
+        type: string
+      gh-username:
+        description: "GitHub user or organization"
+        required: true
+        type: string
+      gh-repo:
+        description: "Target GitHub repository name"
+        required: true
+        type: string
+      gl-token:
+        description: "GitLab personal‑access‑token"
+        required: true
+        type: string
+      gl-username:
+        description: "GitLab user or group"
+        required: true
+        type: string
+      gl-repo:
+        description: "Target GitLab repository name"
+        required: true
+        type: string
+
+jobs:
+  mirror:
+    runs-on: codeberg-tiny
+    steps:
+      # -----------------------------------------------------------------
+      # 0️⃣ (Optional) create the remote repos if they don’t exist yet
+      # -----------------------------------------------------------------
+      - name: Ensure GitHub repo exists
+        env:
+          GH_TOKEN:    ${{ inputs.gh-token }}
+          GH_USERNAME: ${{ inputs.gh-username }}
+          GH_REPO:     ${{ inputs.gh-repo }}
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/users/$GH_USERNAME/repos \
+            -d "{\"name\":\"$GH_REPO\",\"private\":true}")
+
+          if [[ $status -eq 201 || $status -eq 200 || $status -eq 409 ]]; then
+            echo "✅ GitHub repo ready (status $status)"
+          else
+            echo "❌ GitHub repo creation failed (status $status)" && exit 1
+          fi
+
+      - name: Ensure GitLab repo exists
+        env:
+          GL_TOKEN: ${{ inputs.gl-token }}
+          GL_USER:  ${{ inputs.gl-username }}
+          GL_REPO:  ${{ inputs.gl-repo }}
+        run: |
+          ns_id=$(curl -s -H "PRIVATE-TOKEN: $GL_TOKEN" \
+            "https://gitlab.com/api/v4/namespaces?search=$GL_USER" | jq -r '.[0].id')
+          if [[ -z "$ns_id" || "$ns_id" == "null" ]]; then
+            echo "❌ Cannot resolve GitLab namespace for $GL_USER" && exit 1
+          fi
+
+          status=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "PRIVATE-TOKEN: $GL_TOKEN" \
+            "https://gitlab.com/api/v4/projects?name=$GL_REPO&visibility=private&namespace_id=$ns_id")
+
+          if [[ $status -eq 201 || $status -eq 200 || $status -eq 409 ]]; then
+            echo "✅ GitLab repo ready (status $status)"
+          else
+            echo "❌ GitLab repo creation failed (status $status)" && exit 1
+          fi
+
+      # -----------------------------------------------------------------
+      # 1️⃣ Checkout the source repository (the one that called this workflow)
+      # -----------------------------------------------------------------
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for a true mirror
+
+      # -----------------------------------------------------------------
+      # 2️⃣ Configure Git identity (required for pushes)
+      # -----------------------------------------------------------------
+      - name: Configure Git
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+      # -----------------------------------------------------------------
+      # 3️⃣ Add GitHub remote
+      # -----------------------------------------------------------------
+      - name: Add GitHub remote
+        env:
+          GH_TOKEN:    ${{ inputs.gh-token }}
+          GH_USERNAME: ${{ inputs.gh-username }}
+          GH_REPO:     ${{ inputs.gh-repo }}
+        run: |
+          git remote add github "https://${GH_TOKEN}@github.com/${GH_USERNAME}/${GH_REPO}.git"
+
+      # -----------------------------------------------------------------
+      # 4️⃣ Add GitLab remote
+      # -----------------------------------------------------------------
+      - name: Add GitLab remote
+        env:
+          GL_TOKEN: ${{ inputs.gl-token }}
+          GL_USER:  ${{ inputs.gl-username }}
+          GL_REPO:  ${{ inputs.gl-repo }}
+        run: |
+          git remote add gitlab "https://oauth2:${GL_TOKEN}@gitlab.com/${GL_USER}/${GL_REPO}.git"
+
+      # -----------------------------------------------------------------
+      # 5️⃣ Push everything (branches + tags) to both remotes
+      # -----------------------------------------------------------------
+      - name: Push mirror
+        run: |
+          git push --mirror github --force
+          git push --mirror gitlab --force
+        continue-on-error: true   # ignore hidden‑ref rejections

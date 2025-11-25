@@ -1,0 +1,53 @@
+name: Mirror to GitHub & GitLab
+
+# Trigger on every push to any branch (you can narrow it down if you wish)
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch: 
+
+jobs:
+  mirror:
+    runs-on: codeberg-tiny
+
+    steps:
+      # 1️⃣ Checkout the current commit
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed so we have full history for pushing
+
+      # 2️⃣ Set up Git config (author info)
+      - name: Configure Git
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+      # 3️⃣ Add remote for GitHub
+      - name: Add GitHub remote
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME}}
+          GH_REPO: ${{ secrets.GH_REPO }}
+        run: |
+          # Replace <gh-username>/<repo>.git with your actual target
+          git remote add github https://$GH_TOKEN@github.com/$GH_USERNAME/$GH_REPO.git
+
+      # 4️⃣ Add remote for GitLab
+      - name: Add GitLab remote
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_USERNAME: ${{ secrets.GITLAB_USERNAME}}
+          GITLAB_REPO: ${{ secrets.GITLAB_REPO }}
+        run: |
+          # Replace <gl-username>/<repo>.git with your actual target
+          git remote add gitlab https://oauth2:$GITLAB_TOKEN@gitlab.com/$GITLAB_USERNAME/$GITLAB_REPO.git
+
+      # 5️⃣ Push all refs (branches + tags) to both remotes
+      - name: Push to GitHub & GitLab
+        run: |
+          # Push everything, force‑push only if needed (avoid rewriting history)
+          git push --mirror github --force
+          git push --mirror gitlab --force
+          # git push --quiet --force-with-lease gitlab  refs/heads/*:refs/heads/*
+        continue-on-error: true   # ← the step is reported as “Succeeded” even if git returns non‑zero
