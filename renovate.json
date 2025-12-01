@@ -1,0 +1,8 @@
+{
+  \"extends\": [\"config:recommended\"],
+  \"timezone\": \"UTC\",
+  \"schedule\": [\"before 5am on monday\"],
+  \"prCreation\": \"branch\",
+  \"dependencyDashboard\": true,
+  \"packageRules\": [{\"matchPackageNames\": [\"*\"], \"groupName\": \"all dependencies\"}]
+}
